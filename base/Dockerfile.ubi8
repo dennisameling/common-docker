@@ -12,15 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-ARG UBI_MINIMAL_VERSION="latest"
+ARG UBI_MINIMAL_VERSION="8.5-204"
 FROM registry.access.redhat.com/ubi8/ubi-minimal:${UBI_MINIMAL_VERSION}
 
-ARG PROJECT_VERSION
-ARG ARTIFACT_ID
+# 7.0.1
+ARG PROJECT_VERSION="7.0.1"
+
+# cp-base-new
+ARG ARTIFACT_ID="cp-base-new"
 
 # Remember where we came from
 LABEL io.confluent.docker.git.repo="confluentinc/common-docker"
 
+# unknown
 ARG GIT_COMMIT
 LABEL io.confluent.docker.git.id=$GIT_COMMIT
 
@@ -43,6 +47,10 @@ ENV LANG="C.UTF-8"
 # Set the classpath for JARs required by `cub`
 ENV CUB_CLASSPATH='"/usr/share/java/cp-base-new/*"'
 
+# These are build tools (and dependencies) needed to build & install confluent-docker-utils.
+# These will be removed after confluent-docker-utils is installed.
+ENV BUILD_TOOLS="git make gcc findutils python3-devel"
+
 # These ARGs are left blank indicating to the Dnf package manager to install the latest package
 # version that happens to be availible at this time. For reproducible builds, versions should be specified
 # as '-1.2.3-4.el8' on the command line. Or more preferibly the 'dockerfile-maven-plugin' is used
@@ -50,25 +58,25 @@ ENV CUB_CLASSPATH='"/usr/share/java/cp-base-new/*"'
 # building from.
 
 # Redhat Package Versions
-ARG OPENSSL_VERSION=""
-ARG WGET_VERSION=""
-ARG NETCAT_VERSION=""
-ARG PYTHON36_VERSION=""
-ARG TAR_VERSION=""
-ARG PROCPS_VERSION=""
-ARG KRB5_WORKSTATION_VERSION=""
-ARG IPUTILS_VERSION=""
-ARG HOSTNAME_VERSION=""
+ARG OPENSSL_VERSION="-1.1.1k-5.el8_5"
+ARG WGET_VERSION="-1.19.5-10.el8"
+ARG NETCAT_VERSION="-7.70-6.el8"
+ARG PYTHON36_VERSION="-3.6.8-38.module+el8.5.0+12207+5c5719bc"
+ARG TAR_VERSION="-1.30-5.el8"
+ARG PROCPS_VERSION="-3.3.15-6.el8"
+ARG KRB5_WORKSTATION_VERSION="-1.18.2-14.el8"
+ARG IPUTILS_VERSION="-20180629-7.el8"
+ARG HOSTNAME_VERSION="-3.20-6.el8"
 
-# Zulu OpenJDK version
-ARG ZULU_OPENJDK_VERSION=""
+# OpenJDK version
+ARG OPENJDK_VERSION="-1:11.0.13.0.8-4.el8_5"
 
 # Python Module Versions
-ARG PYTHON_PIP_VERSION=""
-ARG PYTHON_SETUPTOOLS_VERSION=""
+ARG PYTHON_PIP_VERSION="==21.*"
+ARG PYTHON_SETUPTOOLS_VERSION="==54.*"
 
 # Confluent Docker Utils Version (Namely the tag or branch to grab from git to install)
-ARG PYTHON_CONFLUENT_DOCKER_UTILS_VERSION="master"
+ARG PYTHON_CONFLUENT_DOCKER_UTILS_VERSION="v0.0.49"
 
 # This can be overriden for an offline/air-gapped builds
 ARG PYTHON_CONFLUENT_DOCKER_UTILS_INSTALL_SPEC="git+https://github.com/confluentinc/confluent-docker-utils@${PYTHON_CONFLUENT_DOCKER_UTILS_VERSION}"
@@ -77,7 +85,7 @@ RUN microdnf --nodocs install yum \
     && rpm --import https://www.azul.com/files/0xB1998361219BD9C9.txt \
     && yum --nodocs -y install https://cdn.azul.com/zulu/bin/zulu-repo-1.0.0-1.noarch.rpm \
     && yum --nodocs install -y --setopt=install_weak_deps=False \
-        git \
+        ${BUILD_TOOLS} \
         "openssl${OPENSSL_VERSION}" \
         "wget${WGET_VERSION}" \
         "nmap-ncat${NETCAT_VERSION}" \
@@ -87,11 +95,11 @@ RUN microdnf --nodocs install yum \
         "krb5-workstation${KRB5_WORKSTATION_VERSION}" \
         "iputils${IPUTILS_VERSION}" \
         "hostname${HOSTNAME_VERSION}" \
-        "zulu11-ca-jdk-headless${ZULU_OPENJDK_VERSION}" "zulu11-ca-jre-headless${ZULU_OPENJDK_VERSION}" \
+        "java-11-openjdk-headless${OPENJDK_VERSION}" "java-11-openjdk-devel${OPENJDK_VERSION}" \
     && alternatives --set python /usr/bin/python3 \
     && python3 -m pip install --upgrade "pip${PYTHON_PIP_VERSION}" "setuptools${PYTHON_SETUPTOOLS_VERSION}" \
     && python3 -m pip install --prefer-binary --prefix=/usr/local --upgrade "${PYTHON_CONFLUENT_DOCKER_UTILS_INSTALL_SPEC}" \
-    && yum remove -y git \
+    # && yum remove -y ${BUILD_TOOLS} \
     # Work around until Redhat releases updated base image
     && yum --nodocs update -y tzdata libgcc libstdc++ \
     && yum clean all \
@@ -113,6 +121,9 @@ ADD --chown=appuser:appuser target/${ARTIFACT_ID}-${PROJECT_VERSION}-package/sha
 ADD --chown=appuser:appuser target/${ARTIFACT_ID}-${PROJECT_VERSION}-package/share/java/${ARTIFACT_ID}/* /usr/share/java/${ARTIFACT_ID}/
 
 COPY --chown=appuser:appuser include/etc/confluent/docker /etc/confluent/docker
+
+# Ensure Java was installed correctly
+RUN java --version
 
 RUN mkdir /licenses
 COPY license.txt /licenses
